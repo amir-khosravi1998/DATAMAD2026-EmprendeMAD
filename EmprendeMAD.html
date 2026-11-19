@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EmprendeMAD · Smart Business Location Finder</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet JS & Chart.js -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+
+    #map {
+      width: 100%;
+      height: 520px;
+      border-radius: 1rem;
+      z-index: 1;
+      background: #e2e8f0;
+    }
+
+    /* Subtle muted basemap tint so colored choropleth polygons stand out cleanly */
+    .leaflet-tile-pane {
+      filter: saturate(0.35) brightness(1.04) contrast(0.95);
+    }
+
+    @media (max-width: 1024px) {
+      #map {
+        height: 400px;
+      }
+    }
+
+    .leaflet-popup-content-wrapper {
+      border-radius: 14px;
+      box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .leaflet-popup-content {
+      margin: 0 !important;
+      width: 295px !important;
+    }
+
+    .map-legend {
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(8px);
+      padding: 10px 12px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(15, 23, 42, 0.12);
+      border: 1px solid #e2e8f0;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    input[type="range"] {
+      accent-color: #D91A3C;
+      cursor: pointer;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 999px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Top Navbar -->
+  <header class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-amber-500 flex items-center justify-center shadow-md shadow-rose-900/30 font-extrabold text-lg">
+          E
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-extrabold tracking-tight">Emprende<span class="text-rose-400">MAD</span></h1>
+          <p class="text-xs text-slate-400" data-i18n="subtitle">Buscador inteligente de ubicación comercial · Comunidad de Madrid</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="methodologyBtn" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span data-i18n="methodologyBtn">Fuentes y Fórmula</span>
+        </button>
+
+        <!-- ES / EN Live Toggle -->
+        <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700" role="group" aria-label="Language switcher">
+          <button id="langES" class="px-2.5 py-1 text-xs font-bold rounded-md transition bg-rose-600 text-white">ES</button>
+          <button id="langEN" class="px-2.5 py-1 text-xs font-bold rounded-md transition text-slate-300 hover:text-white">EN</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Control Bar + Quick KPIs -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+        <!-- Sector Selector -->
+        <div class="lg:col-span-5">
+          <label for="sectorSelect" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5" data-i18n="sectorLabel">
+            ¿Qué negocio quieres abrir?
+          </label>
+          <div class="relative">
+            <select id="sectorSelect" class="w-full appearance-none bg-slate-50 border border-slate-300 hover:border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 rounded-xl px-4 py-3 pr-10 text-sm font-bold text-slate-900 transition outline-none cursor-pointer">
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </div>
+          <p id="cnaeBadge" class="mt-1.5 text-[11px] font-medium text-slate-500"></p>
+        </div>
+
+        <!-- Dynamic Summary KPIs for selected sector -->
+        <div class="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-3">
+            <div class="text-[11px] font-semibold text-emerald-700" data-i18n="kpiTopMarket">Mejor Oportunidad</div>
+            <div id="kpiTopMuni" class="text-sm sm:text-base font-extrabold text-emerald-950 truncate mt-0.5">—</div>
+            <div id="kpiTopScore" class="text-xs font-bold text-emerald-600">—</div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div class="text-[11px] font-semibold text-slate-500" data-i18n="kpiMedianSat">Saturación Media</div>
+            <div id="kpiAvgSat" class="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">—</div>
+            <div class="text-[11px] text-slate-500" data-i18n="per10kShort">neg. / 10k hab.</div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div class="text-[11px] font-semibold text-slate-500" data-i18n="kpiAvgRev">Facturación Est.</div>
+            <div id="kpiAvgRev" class="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">—</div>
+            <div class="text-[11px] text-slate-500" data-i18n="ivaProxyShort">Proxy IVA anual</div>
+          </div>
+
+          <div class="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3">
+            <div class="text-[11px] font-semibold text-rose-700" data-i18n="kpiMostSat">Más Saturado</div>
+            <div id="kpiSatMuni" class="text-sm sm:text-base font-extrabold text-rose-950 truncate mt-0.5">—</div>
+            <div id="kpiSatVal" class="text-xs font-bold text-rose-600">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Map + Right Panel (Weights & Top 5) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- Left: Leaflet Choropleth Map -->
+      <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
+              <span data-i18n="mapTitle">Mapa de Oportunidad por Municipio</span>
+            </h2>
+            <p class="text-xs text-slate-500" data-i18n="mapHint">Haz clic en un municipio para ver métricas detalladas del sector.</p>
+          </div>
+          <button id="resetMapBtn" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition" data-i18n="resetZoom">
+            Centrar Mapa
+          </button>
+        </div>
+
+        <div class="relative">
+          <div id="map"></div>
+        </div>
+      </div>
+
+      <!-- Right: Custom Score Weights + Top 5 Recommended -->
+      <div class="lg:col-span-5 space-y-5">
+
+        <!-- Customizable Weights Card -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                <span data-i18n="weightsTitle">Personaliza tu Scoring (Pesos)</span>
+              </h2>
+              <p class="text-[11px] text-slate-500" data-i18n="weightsSubtitle">Ajusta los criterios según tu estrategia de negocio</p>
+            </div>
+            <button id="resetWeightsBtn" class="text-[11px] font-bold text-rose-600 hover:text-rose-700 px-2 py-1 rounded-md hover:bg-rose-50 transition" data-i18n="resetWeights">
+              Restablecer
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
+            <!-- Weight 1: Low Saturation -->
+            <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+              <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-semibold text-slate-700" data-i18n="wSatLabel">Baja Saturación</span>
+                <span id="wSatPct" class="font-extrabold text-rose-600">35%</span>
+              </div>
+              <input id="wSat" type="range" min="0" max="100" value="35" class="w-full h-1.5 bg-slate-200 rounded-lg" />
+            </div>
+
+            <!-- Weight 2: Population & Density -->
+            <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+              <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-semibold text-slate-700" data-i18n="wPopLabel">Población y Densidad</span>
+                <span id="wPopPct" class="font-extrabold text-rose-600">25%</span>
+              </div>
+              <input id="wPop" type="range" min="0" max="100" value="25" class="w-full h-1.5 bg-slate-200 rounded-lg" />
+            </div>
+
+            <!-- Weight 3: Purchasing Power -->
+            <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+              <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-semibold text-slate-700" data-i18n="wIncLabel">Poder Adquisitivo</span>
+                <span id="wIncPct" class="font-extrabold text-rose-600">25%</span>
+              </div>
+              <input id="wInc" type="range" min="0" max="100" value="25" class="w-full h-1.5 bg-slate-200 rounded-lg" />
+            </div>
+
+            <!-- Weight 4: Survival Rate -->
+            <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+              <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-semibold text-slate-700" data-i18n="wSurvLabel">Supervivencia Emp.</span>
+                <span id="wSurvPct" class="font-extrabold text-rose-600">15%</span>
+              </div>
+              <input id="wSurv" type="range" min="0" max="100" value="15" class="w-full h-1.5 bg-slate-200 rounded-lg" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Top 5 Recommended Municipalities -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="text-base font-extrabold text-slate-900" data-i18n="top5Title">Top 5 Municipios Recomendados</h2>
+              <p class="text-xs text-slate-500" data-i18n="top5Hint">Haz clic en un municipio para localizarlo en el mapa</p>
+            </div>
+            <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">0–100</span>
+          </div>
+
+          <div id="top5List" class="space-y-2.5">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Bottom Section: Sector Saturation Comparison Bar Chart -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-base font-extrabold text-slate-900" data-i18n="chartTitle">Comparativa de Saturación Sectorial vs. Oportunidad</h2>
+          <p class="text-xs text-slate-500" data-i18n="chartSubtitle">Negocios existentes por cada 10.000 habitantes frente al índice de oportunidad</p>
+        </div>
+
+        <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+          <button id="chartModeTop" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm transition" data-i18n="chartTop10">Top 10 Oportunidad</button>
+          <button id="chartModeAll" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-600 hover:text-slate-900 transition" data-i18n="chartAll20">Todos (20)</button>
+        </div>
+      </div>
+
+      <div class="relative h-80 w-full">
+        <canvas id="saturationChart"></canvas>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+      <div>
+        <span class="font-bold text-slate-700">EmprendeMAD</span> · <span data-i18n="footerData">Basado en datos abiertos de Comunidad de Madrid (CKAN) e INE</span>
+      </div>
+      <div data-i18n="footerNote">
+        Prototipo interactivo con datos embebidos realistas de 20 municipios madrileños.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Methodology & Open Data Modal -->
+  <div id="methodologyModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[88vh] overflow-y-auto custom-scrollbar shadow-2xl border border-slate-200 p-6">
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+        <div>
+          <h3 class="text-lg font-extrabold text-slate-900" data-i18n="modalTitle">Metodología y Datasets de Comunidad de Madrid</h3>
+          <p class="text-xs text-slate-500 mt-0.5" data-i18n="modalSub">Modelo cuantitativo multi-criterio basado en datos abiertos oficiales</p>
+        </div>
+        <button id="closeModalBtn" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div id="modalDynamicBody" class="py-4 space-y-4 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <!-- Rendered dynamically per language so math + dataset provenance stay exact -->
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 flex justify-end">
+        <button id="closeModalBtn2" class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition" data-i18n="close">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. BILINGUAL I18N DICTIONARY (ES / EN)
+    // =========================================================================
+    const I18N = {
+      es: {
+        subtitle: "Buscador inteligente de ubicación comercial · Comunidad de Madrid",
+        methodologyBtn: "Fuentes y Fórmula",
+        sectorLabel: "¿Qué negocio quieres abrir?",
+        kpiTopMarket: "Mejor Oportunidad",
+        kpiMedianSat: "Saturación Media",
+        per10kShort: "neg. / 10k hab.",
+        kpiAvgRev: "Facturación Est.",
+        ivaProxyShort: "Proxy IVA anual",
+        kpiMostSat: "Más Saturado",
+        mapTitle: "Mapa de Oportunidad por Municipio",
+        mapHint: "Haz clic en un municipio para ver métricas detalladas del sector.",
+        resetZoom: "Centrar Mapa",
+        weightsTitle: "Personaliza tu Scoring (Pesos)",
+        weightsSubtitle: "Ajusta los criterios según tu estrategia de negocio",
+        resetWeights: "Restablecer",
+        wSatLabel: "Baja Saturación",
+        wPopLabel: "Población y Densidad",
+        wIncLabel: "Poder Adquisitivo",
+        wSurvLabel: "Supervivencia Emp.",
+        top5Title: "Top 5 Municipios Recomendados",
+        top5Hint: "Haz clic en un municipio para localizarlo en el mapa",
+        chartTitle: "Comparativa de Saturación Sectorial vs. Oportunidad",
+        chartSubtitle: "Negocios existentes por cada 10.000 habitantes frente al índice de oportunidad",
+        chartTop10: "Top 10 Oportunidad",
+        chartAll20: "Todos (20)",
+        footerData: "Basado en datos abiertos de Comunidad de Madrid (CKAN) e INE",
+        footerNote: "Prototipo interactivo con datos embebidos realistas de 20 municipios madrileños.",
+        modalTitle: "Metodología y Datasets de Comunidad de Madrid",
+        modalSub: "Modelo cuantitativo multi-criterio basado en datos abiertos oficiales",
+        close: "Cerrar",
+        legendTitle: "Puntuación de Oportunidad",
+        legendHigh: "80–100 · Alta oportunidad",
+        legendMidHigh: "65–79 · Favorable",
+        legendMid: "50–64 · Equilibrado",
+        legendLow: "35–49 · Competitivo",
+        legendSat: "0–34 · Saturado / Baja demanda",
+        popLabel: "Población",
+        densityLabel: "Densidad",
+        existingBiz: "Negocios existentes",
+        bizPer10k: "Negocios / 10k hab.",
+        estRev: "Facturación media (IVA)",
+        survivalRate: "Supervivencia emp. (3 años)",
+        empRate: "Tasa empleo (EPA)",
+        oppScore: "Oportunidad",
+        chartSatAxis: "Negocios / 10.000 hab.",
+        chartScoreAxis: "Opportunity Score (0–100)",
+        cnaePrefix: "Código sectorial",
+        habKm2: "hab/km²",
+        kYear: "k€/año",
+        zonePrefix: "Zona"
+      },
+      en: {
+        subtitle: "Smart Business Location Finder · Comunidad de Madrid",
+        methodologyBtn: "Data & Formula",
+        sectorLabel: "What business do you want to open?",
+        kpiTopMarket: "Top Opportunity",
+        kpiMedianSat: "Avg. Saturation",
+        per10kShort: "biz / 10k inhab.",
+        kpiAvgRev: "Est. Avg. Revenue",
+        ivaProxyShort: "Annual IVA proxy",
+        kpiMostSat: "Most Saturated",
+        mapTitle: "Municipality Opportunity Map",
+        mapHint: "Click any municipality for sector-level market intelligence.",
+        resetZoom: "Reset Map",
+        weightsTitle: "Customize Score Weights",
+        weightsSubtitle: "Tune criteria to match your business strategy",
+        resetWeights: "Reset",
+        wSatLabel: "Low Saturation",
+        wPopLabel: "Pop. & Density",
+        wIncLabel: "Purchasing Power",
+        wSurvLabel: "Business Survival",
+        top5Title: "Top 5 Recommended Municipalities",
+        top5Hint: "Click a municipality card to highlight it on the map",
+        chartTitle: "Sector Saturation vs. Opportunity Comparison",
+        chartSubtitle: "Existing businesses per 10,000 inhabitants compared with Opportunity Score",
+        chartTop10: "Top 10 by Score",
+        chartAll20: "All 20",
+        footerData: "Powered by Comunidad de Madrid Open Data (CKAN) & INE models",
+        footerNote: "Interactive prototype with realistic embedded data for 20 Madrid municipalities.",
+        modalTitle: "Methodology & Comunidad de Madrid Datasets",
+        modalSub: "Multi-criteria quantitative model built on official open datasets",
+        close: "Close",
+        legendTitle: "Opportunity Score",
+        legendHigh: "80–100 · High Opportunity",
+        legendMidHigh: "65–79 · Favorable",
+        legendMid: "50–64 · Balanced",
+        legendLow: "35–49 · Competitive",
+        legendSat: "0–34 · Saturated / Low Demand",
+        popLabel: "Population",
+        densityLabel: "Density",
+        existingBiz: "Existing businesses",
+        bizPer10k: "Businesses / 10k inhab.",
+        estRev: "Est. avg. revenue (IVA)",
+        survivalRate: "Business survival (3-yr)",
+        empRate: "Employment rate (EPA)",
+        oppScore: "Opportunity",
+        chartSatAxis: "Businesses / 10k inhab.",
+        chartScoreAxis: "Opportunity Score (0–100)",
+        cnaePrefix: "Sector code",
+        habKm2: "inhab/km²",
+        kYear: "k€/year",
+        zonePrefix: "Zone"
+      }
+    };
+
+    function renderMethodologyModalBody() {
+      const container = document.getElementById("modalDynamicBody");
+      if (state.lang === "es") {
+        container.innerHTML = `
+          <div class="bg-slate-900 text-slate-100 rounded-xl p-4 space-y-2">
+            <div class="text-xs font-extrabold uppercase tracking-wider text-rose-400">Fórmula Matemática Exacta · Opportunity Score (0–100)</div>
+            <div class="font-mono text-xs sm:text-[13px] bg-slate-800 rounded-lg p-3 border border-slate-700 overflow-x-auto">
+              Score(m, s) = round( 100 × [ (w<sub>sat</sub>·N<sub>sat</sub> + w<sub>pop</sub>·N<sub>dem</sub> + w<sub>inc</sub>·N<sub>pow</sub> + w<sub>surv</sub>·N<sub>surv</sub>) / (w<sub>sat</sub> + w<sub>pop</sub> + w<sub>inc</sub> + w<sub>surv</sub>) ] )
+            </div>
+            <p class="text-[11px] text-slate-300">
+              Donde <strong>Norm(x)</strong> representa la normalización Min–Max entre los 20 municipios:
+              <code class="text-amber-300">Norm(x<sub>m</sub>) = (x<sub>m</sub> − min(x)) / (max(x) − min(x))</code>, y <strong>w</strong> son los pesos elegidos en tus 4 sliders.
+            </p>
+          </div>
+
+          <div class="space-y-2.5">
+            <h4 class="font-bold text-slate-900">Desglose de cada componente y su origen de datos:</h4>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">1. Baja Saturación Sectorial (N<sub>sat</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">col_emp_ramas + padron_por_sexo</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Calculamos la densidad de competencia: <code class="bg-white px-1 rounded border">Sat(m,s) = (Empresas(m,s) / Población(m)) × 10.000</code>, combinando el recuento por rama CNAE (<code class="font-semibold">col_emp_ramas</code>) dividido entre la población municipal (<code class="font-semibold">padron_por_sexo</code>). Luego invertimos la normalización: <code class="bg-white px-1 rounded border">N<sub>sat</sub> = 1 − Norm(Sat(m,s))</code>, premiando mercados menos saturados.
+              </p>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">2. Demanda Demográfica y Tráfico (N<sub>dem</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">padron_por_sexo + 1930748</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Sumamos escala de población (<code class="font-semibold">padron_por_sexo</code>) y densidad urbana (<code class="font-semibold">1930748</code>) en escala logarítmica para evitar que Madrid Capital distorsione al resto: <code class="bg-white px-1 rounded border">D(m) = 0.60·log<sub>10</sub>(Población(m)) + 0.40·log<sub>10</sub>(Densidad(m))</code>, y normalizamos <code class="bg-white px-1 rounded border">N<sub>dem</sub> = Norm(D(m))</code>.
+              </p>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">3. Poder Adquisitivo y Facturación (N<sub>pow</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">magnitudes_economicas_declaraciones_iva_por_sector + epa_base_2011_tasa_empleo_sexo_edad</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Combinamos los ingresos medios estimados por negocio vía declaraciones de IVA sectoriales (<code class="font-semibold">magnitudes_economicas_declaraciones_iva_por_sector</code>) con la tasa de empleo local (<code class="font-semibold">epa_base_2011_tasa_empleo_sexo_edad</code>): <code class="bg-white px-1 rounded border">N<sub>pow</sub> = 0.65·Norm(FacturaciónIVA(m,s)) + 0.35·Norm(TasaEmpleoEPA(m))</code>.
+              </p>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">4. Supervivencia Empresarial (N<sub>surv</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">demografia_empresarial_tipo_persona</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Usamos la tasa de supervivencia a 3 años derivada de altas y bajas empresariales (<code class="font-semibold">demografia_empresarial_tipo_persona</code>): <code class="bg-white px-1 rounded border">N<sub>surv</sub> = Norm(Supervivencia(m))</code>.
+              </p>
+            </div>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="bg-slate-900 text-slate-100 rounded-xl p-4 space-y-2">
+            <div class="text-xs font-extrabold uppercase tracking-wider text-rose-400">Exact Mathematical Formula · Opportunity Score (0–100)</div>
+            <div class="font-mono text-xs sm:text-[13px] bg-slate-800 rounded-lg p-3 border border-slate-700 overflow-x-auto">
+              Score(m, s) = round( 100 × [ (w<sub>sat</sub>·N<sub>sat</sub> + w<sub>pop</sub>·N<sub>dem</sub> + w<sub>inc</sub>·N<sub>pow</sub> + w<sub>surv</sub>·N<sub>surv</sub>) / (w<sub>sat</sub> + w<sub>pop</sub> + w<sub>inc</sub> + w<sub>surv</sub>) ] )
+            </div>
+            <p class="text-[11px] text-slate-300">
+              Where <strong>Norm(x)</strong> is Min–Max normalization across all 20 municipalities:
+              <code class="text-amber-300">Norm(x<sub>m</sub>) = (x<sub>m</sub> − min(x)) / (max(x) − min(x))</code>, and <strong>w</strong> are your 4 slider weights.
+            </p>
+          </div>
+
+          <div class="space-y-2.5">
+            <h4 class="font-bold text-slate-900">Component-by-component breakdown & exact dataset sources:</h4>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">1. Low Sector Saturation (N<sub>sat</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">col_emp_ramas + padron_por_sexo</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Competitor density is computed as <code class="bg-white px-1 rounded border">Sat(m,s) = (Businesses(m,s) / Population(m)) × 10,000</code>, dividing active CNAE sector businesses (<code class="font-semibold">col_emp_ramas</code>) by municipal population (<code class="font-semibold">padron_por_sexo</code>). We then invert the normalized value: <code class="bg-white px-1 rounded border">N<sub>sat</sub> = 1 − Norm(Sat(m,s))</code>, so underserved markets score higher.
+              </p>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">2. Demographic Demand & Foot Traffic (N<sub>dem</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">padron_por_sexo + 1930748</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Combines total customer base (<code class="font-semibold">padron_por_sexo</code>) and population density (<code class="font-semibold">1930748</code>) on a log scale so Madrid Capital does not compress all other cities: <code class="bg-white px-1 rounded border">D(m) = 0.60·log<sub>10</sub>(Population(m)) + 0.40·log<sub>10</sub>(Density(m))</code>, then <code class="bg-white px-1 rounded border">N<sub>dem</sub> = Norm(D(m))</code>.
+              </p>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">3. Purchasing Power & Sector Revenue (N<sub>pow</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">magnitudes_economicas_declaraciones_iva_por_sector + epa_base_2011_tasa_empleo_sexo_edad</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Weighted sum of normalized average sector revenue proxy from VAT filings (<code class="font-semibold">magnitudes_economicas_declaraciones_iva_por_sector</code>) and local employment rate (<code class="font-semibold">epa_base_2011_tasa_empleo_sexo_edad</code>): <code class="bg-white px-1 rounded border">N<sub>pow</sub> = 0.65·Norm(EstRevenueIVA(m,s)) + 0.35·Norm(EmploymentRateEPA(m))</code>.
+              </p>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <strong class="text-slate-900">4. Business Survival Rate (N<sub>surv</sub>)</strong>
+                <span class="text-[11px] font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">demografia_empresarial_tipo_persona</span>
+              </div>
+              <p class="text-xs text-slate-600">
+                Normalized 3-year business survival rate derived from firm births vs. deaths (<code class="font-semibold">demografia_empresarial_tipo_persona</code>): <code class="bg-white px-1 rounded border">N<sub>surv</sub> = Norm(SurvivalRate(m))</code>.
+              </p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // =========================================================================
+    // 2. 10 BUSINESS SECTORS
+    // =========================================================================
+    const SECTORS = [
+      { id: "restaurante", cnae: "CNAE 5610", es: "Restaurante / Gastronomía", en: "Restaurant / Dining", icon: "🍽️", baseRev: 245 },
+      { id: "gimnasio", cnae: "CNAE 9313", es: "Gimnasio / Centro Fitness", en: "Gym / Fitness Center", icon: "🏋️", baseRev: 310 },
+      { id: "peluqueria", cnae: "CNAE 9602", es: "Peluquería y Estética", en: "Hair Salon & Beauty", icon: "✂️", baseRev: 98 },
+      { id: "alimentacion", cnae: "CNAE 4711", es: "Tienda de Alimentación / Súper", en: "Grocery / Food Store", icon: "🛒", baseRev: 280 },
+      { id: "tech", cnae: "CNAE 6202", es: "Consultoría Tech / IT", en: "Tech / IT Consulting", icon: "💻", baseRev: 390 },
+      { id: "dental", cnae: "CNAE 8623", es: "Clínica Dental", en: "Dental Clinic", icon: "🦷", baseRev: 340 },
+      { id: "cafeteria", cnae: "CNAE 5630", es: "Cafetería / Bar de Especialidad", en: "Specialty Café / Bar", icon: "☕", baseRev: 155 },
+      { id: "fisio", cnae: "CNAE 8690", es: "Centro de Fisioterapia", en: "Physiotherapy Clinic", icon: "🩺", baseRev: 145 },
+      { id: "academia", cnae: "CNAE 8559", es: "Academia / Formación y Tech", en: "Training & Tutoring Academy", icon: "🎓", baseRev: 165 },
+      { id: "moda", cnae: "CNAE 4771", es: "Tienda de Moda / Retail", en: "Fashion & Retail Boutique", icon: "👗", baseRev: 190 }
+    ];
+
+    // =========================================================================
+    // 3. 20 MADRID MUNICIPALITIES + CONTIGUOUS VORONOI TESSELLATION
+    // =========================================================================
+    const MUNICIPALITIES = [
+      {
+        id: "madrid", name: "Madrid (Capital)", zoneEs: "Centro", zoneEn: "Center",
+        center: [-3.7038, 40.4168],
+        population: 3332035, density: 5510, employmentRate: 68.4, survivalRate: 71.2,
+        counts: { restaurante: 9850, gimnasio: 820, peluqueria: 4950, alimentacion: 4650, tech: 6400, dental: 2150, cafeteria: 7600, fisio: 1620, academia: 1850, moda: 5100 },
+        revMult: 1.24
+      },
+      {
+        id: "mostoles", name: "Móstoles", zoneEs: "Sur-Oeste", zoneEn: "South-West",
+        center: [-3.8650, 40.3223],
+        population: 211265, density: 4660, employmentRate: 63.1, survivalRate: 68.5,
+        counts: { restaurante: 345, gimnasio: 34, peluqueria: 235, alimentacion: 245, tech: 92, dental: 78, cafeteria: 310, fisio: 62, academia: 74, moda: 185 },
+        revMult: 0.92
+      },
+      {
+        id: "alcala", name: "Alcalá de Henares", zoneEs: "Este (Corredor)", zoneEn: "East Corridor",
+        center: [-3.3635, 40.4818],
+        population: 199184, density: 2270, employmentRate: 65.2, survivalRate: 70.4,
+        counts: { restaurante: 380, gimnasio: 36, peluqueria: 220, alimentacion: 215, tech: 135, dental: 84, cafeteria: 325, fisio: 68, academia: 92, moda: 210 },
+        revMult: 0.97
+      },
+      {
+        id: "fuenlabrada", name: "Fuenlabrada", zoneEs: "Sur", zoneEn: "South",
+        center: [-3.7941, 40.2842],
+        population: 189891, density: 4815, employmentRate: 62.5, survivalRate: 67.8,
+        counts: { restaurante: 295, gimnasio: 28, peluqueria: 205, alimentacion: 225, tech: 76, dental: 64, cafeteria: 285, fisio: 52, academia: 60, moda: 165 },
+        revMult: 0.89
+      },
+      {
+        id: "leganes", name: "Leganés", zoneEs: "Sur", zoneEn: "South",
+        center: [-3.7635, 40.3272],
+        population: 190665, density: 4425, employmentRate: 64.0, survivalRate: 69.2,
+        counts: { restaurante: 315, gimnasio: 31, peluqueria: 210, alimentacion: 218, tech: 105, dental: 74, cafeteria: 290, fisio: 58, academia: 68, moda: 175 },
+        revMult: 0.94
+      },
+      {
+        id: "getafe", name: "Getafe", zoneEs: "Sur", zoneEn: "South",
+        center: [-3.7327, 40.3083],
+        population: 185899, density: 2370, employmentRate: 66.8, survivalRate: 72.1,
+        counts: { restaurante: 330, gimnasio: 27, peluqueria: 192, alimentacion: 198, tech: 148, dental: 69, cafeteria: 270, fisio: 54, academia: 78, moda: 170 },
+        revMult: 1.01
+      },
+      {
+        id: "alcorcon", name: "Alcorcón", zoneEs: "Sur-Oeste", zoneEn: "South-West",
+        center: [-3.8249, 40.3458],
+        population: 172384, density: 5110, employmentRate: 65.7, survivalRate: 70.6,
+        counts: { restaurante: 310, gimnasio: 29, peluqueria: 198, alimentacion: 190, tech: 112, dental: 72, cafeteria: 265, fisio: 61, academia: 66, moda: 182 },
+        revMult: 0.98
+      },
+      {
+        id: "torrejon", name: "Torrejón de Ardoz", zoneEs: "Este (Corredor)", zoneEn: "East Corridor",
+        center: [-3.4697, 40.4554],
+        population: 137711, density: 4220, employmentRate: 66.1, survivalRate: 71.0,
+        counts: { restaurante: 235, gimnasio: 21, peluqueria: 148, alimentacion: 145, tech: 78, dental: 48, cafeteria: 205, fisio: 42, academia: 49, moda: 122 },
+        revMult: 0.96
+      },
+      {
+        id: "parla", name: "Parla", zoneEs: "Sur", zoneEn: "South",
+        center: [-3.7675, 40.2361],
+        population: 133004, density: 5420, employmentRate: 59.8, survivalRate: 65.4,
+        counts: { restaurante: 175, gimnasio: 15, peluqueria: 138, alimentacion: 158, tech: 34, dental: 35, cafeteria: 168, fisio: 28, academia: 34, moda: 92 },
+        revMult: 0.84
+      },
+      {
+        id: "alcobendas", name: "Alcobendas", zoneEs: "Norte", zoneEn: "North",
+        center: [-3.6420, 40.5475],
+        population: 119416, density: 2655, employmentRate: 71.8, survivalRate: 76.2,
+        counts: { restaurante: 315, gimnasio: 33, peluqueria: 142, alimentacion: 112, tech: 390, dental: 68, cafeteria: 225, fisio: 56, academia: 64, moda: 148 },
+        revMult: 1.21
+      },
+      {
+        id: "rivas", name: "Rivas-Vaciamadrid", zoneEs: "Sur-Este", zoneEn: "South-East",
+        center: [-3.5186, 40.3396],
+        population: 100275, density: 1485, employmentRate: 72.4, survivalRate: 77.5,
+        counts: { restaurante: 128, gimnasio: 12, peluqueria: 82, alimentacion: 78, tech: 94, dental: 31, cafeteria: 96, fisio: 29, academia: 36, moda: 64 },
+        revMult: 1.12
+      },
+      {
+        id: "lasrozas", name: "Las Rozas de Madrid", zoneEs: "Noroeste", zoneEn: "North-West",
+        center: [-3.8737, 40.4929],
+        population: 98086, density: 1680, employmentRate: 73.6, survivalRate: 78.1,
+        counts: { restaurante: 230, gimnasio: 26, peluqueria: 108, alimentacion: 86, tech: 345, dental: 58, cafeteria: 162, fisio: 52, academia: 62, moda: 145 },
+        revMult: 1.26
+      },
+      {
+        id: "ssreyes", name: "San Sebastián de los Reyes", zoneEs: "Norte", zoneEn: "North",
+        center: [-3.6267, 40.5556],
+        population: 92734, density: 1565, employmentRate: 70.5, survivalRate: 74.3,
+        counts: { restaurante: 195, gimnasio: 19, peluqueria: 98, alimentacion: 84, tech: 165, dental: 44, cafeteria: 145, fisio: 38, academia: 42, moda: 112 },
+        revMult: 1.11
+      },
+      {
+        id: "pozuelo", name: "Pozuelo de Alarcón", zoneEs: "Oeste", zoneEn: "West",
+        center: [-3.8134, 40.4359],
+        population: 88784, density: 2050, employmentRate: 74.9, survivalRate: 79.4,
+        counts: { restaurante: 245, gimnasio: 29, peluqueria: 112, alimentacion: 78, tech: 375, dental: 64, cafeteria: 175, fisio: 58, academia: 72, moda: 136 },
+        revMult: 1.32
+      },
+      {
+        id: "valdemoro", name: "Valdemoro", zoneEs: "Sur", zoneEn: "South",
+        center: [-3.6789, 40.1908],
+        population: 81394, density: 1265, employmentRate: 67.4, survivalRate: 72.8,
+        counts: { restaurante: 112, gimnasio: 10, peluqueria: 76, alimentacion: 72, tech: 44, dental: 27, cafeteria: 98, fisio: 24, academia: 28, moda: 58 },
+        revMult: 0.98
+      },
+      {
+        id: "coslada", name: "Coslada", zoneEs: "Este (Corredor)", zoneEn: "East Corridor",
+        center: [-3.5613, 40.4238],
+        population: 80171, density: 6670, employmentRate: 66.5, survivalRate: 70.1,
+        counts: { restaurante: 152, gimnasio: 14, peluqueria: 96, alimentacion: 94, tech: 62, dental: 36, cafeteria: 138, fisio: 31, academia: 34, moda: 78 },
+        revMult: 0.96
+      },
+      {
+        id: "majadahonda", name: "Majadahonda", zoneEs: "Oeste", zoneEn: "West",
+        center: [-3.8718, 40.4735],
+        population: 72548, density: 1885, employmentRate: 73.2, survivalRate: 77.6,
+        counts: { restaurante: 185, gimnasio: 21, peluqueria: 92, alimentacion: 68, tech: 195, dental: 51, cafeteria: 132, fisio: 46, academia: 54, moda: 118 },
+        revMult: 1.25
+      },
+      {
+        id: "villalba", name: "Collado Villalba", zoneEs: "Sierra Noroeste", zoneEn: "NW Sierra",
+        center: [-4.0049, 40.6350],
+        population: 65657, density: 2475, employmentRate: 64.8, survivalRate: 69.5,
+        counts: { restaurante: 142, gimnasio: 13, peluqueria: 84, alimentacion: 78, tech: 52, dental: 32, cafeteria: 124, fisio: 29, academia: 31, moda: 88 },
+        revMult: 0.95
+      },
+      {
+        id: "boadilla", name: "Boadilla del Monte", zoneEs: "Oeste", zoneEn: "West",
+        center: [-3.8783, 40.4050],
+        population: 64742, density: 1370, employmentRate: 75.4, survivalRate: 80.2,
+        counts: { restaurante: 108, gimnasio: 11, peluqueria: 58, alimentacion: 46, tech: 162, dental: 28, cafeteria: 76, fisio: 26, academia: 38, moda: 56 },
+        revMult: 1.29
+      },
+      {
+        id: "aranjuez", name: "Aranjuez", zoneEs: "Sur (Vega)", zoneEn: "South Valley",
+        center: [-3.6025, 40.0311],
+        population: 60668, density: 302, employmentRate: 61.2, survivalRate: 67.1,
+        counts: { restaurante: 126, gimnasio: 9, peluqueria: 68, alimentacion: 66, tech: 26, dental: 24, cafeteria: 108, fisio: 21, academia: 24, moda: 66 },
+        revMult: 0.88
+      }
+    ];
+
+    // Convex outer boundary of the Comunidad de Madrid metropolitan region [lng, lat]
+    // Clipped Voronoi cells inside this boundary connect every municipality seamlessly!
+    const ASPECT = Math.cos(40.4 * Math.PI / 180);
+    const REGION_BOUNDARY = [
+      [-3.58, 40.72],
+      [-3.22, 40.52],
+      [-3.26, 40.32],
+      [-3.58, 39.94],
+      [-3.82, 40.06],
+      [-4.02, 40.30],
+      [-4.08, 40.52],
+      [-4.12, 40.70]
+    ];
+
+    function clipPolygonByHalfPlane(poly, a, b, c) {
+      if (poly.length === 0) return [];
+      const out = [];
+      const isInside = p => (a * p[0] + b * p[1] - c) >= -1e-12;
+      const intersect = (p1, p2) => {
+        const v1 = a * p1[0] + b * p1[1] - c;
+        const v2 = a * p2[0] + b * p2[1] - c;
+        const denom = v1 - v2;
+        if (Math.abs(denom) < 1e-12) return p1;
+        const t = v1 / denom;
+        return [p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])];
+      };
+      for (let i = 0; i < poly.length; i++) {
+        const curr = poly[i];
+        const prev = poly[(i + poly.length - 1) % poly.length];
+        const currIn = isInside(curr);
+        const prevIn = isInside(prev);
+        if (currIn) {
+          if (!prevIn) out.push(intersect(prev, curr));
+          out.push(curr);
+        } else if (prevIn) {
+          out.push(intersect(prev, curr));
+        }
+      }
+      return out;
+    }
+
+    function buildConnectedVoronoiGeoJSON() {
+      const basePoly = REGION_BOUNDARY.map(([lng, lat]) => [lng * ASPECT, lat]);
+      const sites = MUNICIPALITIES.map(m => [m.center[0] * ASPECT, m.center[1]]);
+
+      return {
+        type: "FeatureCollection",
+        features: MUNICIPALITIES.map((m, i) => {
+          let cell = basePoly;
+          const [xi, yi] = sites[i];
+          for (let j = 0; j < sites.length; j++) {
+            if (i === j) continue;
+            const [xj, yj] = sites[j];
+            const a = 2 * (xi - xj);
+            const b = 2 * (yi - yj);
+            const c = (xi * xi + yi * yi) - (xj * xj + yj * yj);
+            cell = clipPolygonByHalfPlane(cell, a, b, c);
+          }
+          const ring = cell.map(([x, y]) => [+(x / ASPECT).toFixed(5), +y.toFixed(5)]);
+          if (ring.length > 0) ring.push(ring[0]);
+
+          return {
+            type: "Feature",
+            properties: { id: m.id, name: m.name },
+            geometry: {
+              type: "Polygon",
+              coordinates: [ring]
+            }
+          };
+        })
+      };
+    }
+
+    const MADRID_GEOJSON = buildConnectedVoronoiGeoJSON();
+
+    // =========================================================================
+    // 4. APPLICATION STATE
+    // =========================================================================
+    const state = {
+      lang: "es",
+      sectorId: "restaurante",
+      weights: { sat: 35, pop: 25, inc: 25, surv: 15 },
+      chartMode: "top10",
+      selectedMuniId: null
+    };
+
+    let map = null;
+    let geoJsonLayer = null;
+    let legendControl = null;
+    let saturationChart = null;
+    let layerById = {};
+    let computedRows = [];
+
+    // =========================================================================
+    // 5. SCORING ENGINE (Matches Methodology Modal Formula 1-to-1)
+    // =========================================================================
+    function computeScores() {
+      const sectorObj = SECTORS.find(s => s.id === state.sectorId);
+      const raw = MUNICIPALITIES.map(m => {
+        const count = m.counts[state.sectorId];
+        const per10k = (count / m.population) * 10000;
+        const estRevenue = Math.round(sectorObj.baseRev * m.revMult);
+        const demandRaw = 0.60 * Math.log10(m.population) + 0.40 * Math.log10(m.density);
+
+        return {
+          ...m,
+          count,
+          per10k,
+          estRevenue,
+          demandRaw
+        };
+      });
+
+      const minMax = (arr, key) => {
+        const vals = arr.map(r => r[key]);
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        return { min, max, span: max - min || 1 };
+      };
+
+      const mmSat = minMax(raw, "per10k");
+      const mmDem = minMax(raw, "demandRaw");
+      const mmRev = minMax(raw, "estRevenue");
+      const mmEmp = minMax(raw, "employmentRate");
+      const mmSurv = minMax(raw, "survivalRate");
+
+      const totalW = state.weights.sat + state.weights.pop + state.weights.inc + state.weights.surv;
+      const wSat = totalW ? state.weights.sat / totalW : 0.25;
+      const wPop = totalW ? state.weights.pop / totalW : 0.25;
+      const wInc = totalW ? state.weights.inc / totalW : 0.25;
+      const wSurv = totalW ? state.weights.surv / totalW : 0.25;
+
+      computedRows = raw.map(r => {
+        const normSat = 1 - (r.per10k - mmSat.min) / mmSat.span;
+        const normDem = (r.demandRaw - mmDem.min) / mmDem.span;
+        const normRev = (r.estRevenue - mmRev.min) / mmRev.span;
+        const normEmp = (r.employmentRate - mmEmp.min) / mmEmp.span;
+        const normPow = 0.65 * normRev + 0.35 * normEmp;
+        const normSurv = (r.survivalRate - mmSurv.min) / mmSurv.span;
+
+        const score = Math.round(
+          (normSat * wSat + normDem * wPop + normPow * wInc + normSurv * wSurv) * 100
+        );
+
+        return {
+          ...r,
+          score: Math.max(0, Math.min(100, score))
+        };
+      });
+
+      computedRows.sort((a, b) => b.score - a.score);
+    }
+
+    function getScoreColor(score) {
+      if (score >= 80) return "#10b981";
+      if (score >= 65) return "#84cc16";
+      if (score >= 50) return "#eab308";
+      if (score >= 35) return "#f97316";
+      return "#ef4444";
+    }
+
+    function getScoreBadgeClasses(score) {
+      if (score >= 80) return "bg-emerald-100 text-emerald-800 border-emerald-200";
+      if (score >= 65) return "bg-lime-100 text-lime-800 border-lime-200";
+      if (score >= 50) return "bg-amber-100 text-amber-800 border-amber-200";
+      if (score >= 35) return "bg-orange-100 text-orange-800 border-orange-200";
+      return "bg-rose-100 text-rose-800 border-rose-200";
+    }
+
+    // =========================================================================
+    // 6. LEAFLET MAP INITIALIZATION & POPUP RENDERING
+    // =========================================================================
+    function buildPopupHTML(row) {
+      const t = I18N[state.lang];
+      const sectorObj = SECTORS.find(s => s.id === state.sectorId);
+      const sectorName = state.lang === "es" ? sectorObj.es : sectorObj.en;
+      const zone = state.lang === "es" ? row.zoneEs : row.zoneEn;
+      const color = getScoreColor(row.score);
+      const locale = state.lang === "es" ? "es-ES" : "en-US";
+
+      return `
+        <div class="font-sans">
+          <div class="px-4 py-3 text-white flex items-center justify-between" style="background: linear-gradient(135deg, #0f172a, #1e293b);">
+            <div>
+              <div class="text-sm font-extrabold leading-tight">${row.name}</div>
+              <div class="text-[11px] text-slate-300 mt-0.5">${t.zonePrefix}: ${zone} · ${sectorObj.icon} ${sectorName}</div>
+            </div>
+            <div class="text-center px-2.5 py-1 rounded-xl font-extrabold text-sm text-white shadow-sm" style="background-color: ${color};">
+              ${row.score}<span class="text-[10px] font-normal opacity-90">/100</span>
+            </div>
+          </div>
+
+          <div class="p-3.5 bg-white space-y-2 text-xs">
+            <div class="grid grid-cols-2 gap-2">
+              <div class="bg-slate-50 rounded-lg p-2 border border-slate-100">
+                <div class="text-[10px] text-slate-500 font-semibold">${t.popLabel}</div>
+                <div class="font-extrabold text-slate-900">${row.population.toLocaleString(locale)}</div>
+              </div>
+              <div class="bg-slate-50 rounded-lg p-2 border border-slate-100">
+                <div class="text-[10px] text-slate-500 font-semibold">${t.densityLabel}</div>
+                <div class="font-extrabold text-slate-900">${row.density.toLocaleString(locale)} <span class="font-normal text-[10px] text-slate-500">${t.habKm2}</span></div>
+              </div>
+            </div>
+
+            <div class="border-t border-slate-100 pt-2 space-y-1.5">
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">${t.existingBiz}</span>
+                <span class="font-bold text-slate-900">${row.count.toLocaleString(locale)}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">${t.bizPer10k}</span>
+                <span class="font-bold text-slate-900">${row.per10k.toFixed(1)}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">${t.estRev}</span>
+                <span class="font-bold text-emerald-700">~${row.estRevenue} ${t.kYear}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">${t.survivalRate}</span>
+                <span class="font-bold text-slate-900">${row.survivalRate.toFixed(1)}%</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">${t.empRate}</span>
+                <span class="font-bold text-slate-900">${row.employmentRate.toFixed(1)}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function initMap() {
+      map = L.map("map", {
+        center: [40.36, -3.68],
+        zoom: 10,
+        minZoom: 9,
+        maxZoom: 13
+      });
+
+      // Standard OpenStreetMap tile layer (no API key watermark)
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19
+      }).addTo(map);
+
+      geoJsonLayer = L.geoJSON(MADRID_GEOJSON, {
+        style: feature => {
+          const row = computedRows.find(r => r.id === feature.properties.id);
+          const color = row ? getScoreColor(row.score) : "#94a3b8";
+          return {
+            fillColor: color,
+            weight: 1.8,
+            opacity: 1,
+            color: "#ffffff",
+            fillOpacity: 0.76
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          layerById[feature.properties.id] = layer;
+
+          layer.on({
+            mouseover: e => {
+              const target = e.target;
+              target.setStyle({ weight: 3, color: "#0f172a", fillOpacity: 0.88 });
+              target.bringToFront();
+            },
+            mouseout: e => {
+              geoJsonLayer.resetStyle(e.target);
+            },
+            click: e => {
+              state.selectedMuniId = feature.properties.id;
+              const row = computedRows.find(r => r.id === feature.properties.id);
+              if (row) {
+                e.target.bindPopup(buildPopupHTML(row), { maxWidth: 310 }).openPopup();
+              }
+            }
+          });
+        }
+      }).addTo(map);
+
+      legendControl = L.control({ position: "bottomleft" });
+      legendControl.onAdd = () => {
+        const div = L.DomUtil.create("div", "map-legend");
+        div.id = "mapLegendBox";
+        return div;
+      };
+      legendControl.addTo(map);
+      updateLegend();
+    }
+
+    function updateLegend() {
+      const t = I18N[state.lang];
+      const box = document.getElementById("mapLegendBox");
+      if (!box) return;
+      const items = [
+        { color: "#10b981", label: t.legendHigh },
+        { color: "#84cc16", label: t.legendMidHigh },
+        { color: "#eab308", label: t.legendMid },
+        { color: "#f97316", label: t.legendLow },
+        { color: "#ef4444", label: t.legendSat }
+      ];
+      box.innerHTML = `
+        <div class="font-extrabold text-slate-800 mb-1.5">${t.legendTitle}</div>
+        <div class="space-y-1">
+          ${items.map(it => `
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-sm inline-block flex-shrink-0" style="background:${it.color}"></span>
+              <span class="text-slate-700 font-medium">${it.label}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function refreshMap() {
+      if (!geoJsonLayer) return;
+      geoJsonLayer.eachLayer(layer => {
+        const id = layer.feature.properties.id;
+        const row = computedRows.find(r => r.id === id);
+        if (!row) return;
+        layer.setStyle({
+          fillColor: getScoreColor(row.score),
+          weight: state.selectedMuniId === id ? 3 : 1.8,
+          color: state.selectedMuniId === id ? "#0f172a" : "#ffffff",
+          fillOpacity: 0.76
+        });
+
+        const t = I18N[state.lang];
+        layer.unbindTooltip();
+        layer.bindTooltip(
+          `<div class="font-sans text-xs"><strong>${row.name}</strong><br>${t.oppScore}: <strong>${row.score}/100</strong></div>`,
+          { sticky: true, direction: "top" }
+        );
+
+        if (layer.isPopupOpen()) {
+          layer.setPopupContent(buildPopupHTML(row));
+        }
+      });
+    }
+
+    function focusMunicipality(id) {
+      state.selectedMuniId = id;
+      const layer = layerById[id];
+      const row = computedRows.find(r => r.id === id);
+      if (layer && row) {
+        map.fitBounds(layer.getBounds(), { maxZoom: 11, padding: [40, 40] });
+        layer.bindPopup(buildPopupHTML(row), { maxWidth: 310 }).openPopup();
+        refreshMap();
+      }
+    }
+
+    // =========================================================================
+    // 7. TOP 5 PANEL & SUMMARY KPIs
+    // =========================================================================
+    function renderTop5AndKPIs() {
+      const t = I18N[state.lang];
+      const locale = state.lang === "es" ? "es-ES" : "en-US";
+      const top5 = computedRows.slice(0, 5);
+
+      const top = computedRows[0];
+      const avgSat = computedRows.reduce((s, r) => s + r.per10k, 0) / computedRows.length;
+      const avgRev = computedRows.reduce((s, r) => s + r.estRevenue, 0) / computedRows.length;
+      const mostSat = [...computedRows].sort((a, b) => b.per10k - a.per10k)[0];
+
+      document.getElementById("kpiTopMuni").textContent = top.name;
+      document.getElementById("kpiTopScore").textContent = `${top.score} / 100`;
+      document.getElementById("kpiAvgSat").textContent = avgSat.toFixed(1);
+      document.getElementById("kpiAvgRev").textContent = `€${Math.round(avgRev)}k`;
+      document.getElementById("kpiSatMuni").textContent = mostSat.name;
+      document.getElementById("kpiSatVal").textContent = `${mostSat.per10k.toFixed(1)} / 10k`;
+
+      const container = document.getElementById("top5List");
+      container.innerHTML = top5.map((row, idx) => {
+        const badgeCls = getScoreBadgeClasses(row.score);
+        const barColor = getScoreColor(row.score);
+        return `
+          <button onclick="focusMunicipality('${row.id}')" class="w-full text-left group bg-slate-50 hover:bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-3 transition shadow-sm hover:shadow flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-slate-900 text-white font-extrabold text-xs flex items-center justify-center flex-shrink-0 group-hover:bg-rose-600 transition">
+              #${idx + 1}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-extrabold text-sm text-slate-900 truncate">${row.name}</span>
+                <span class="text-xs font-extrabold px-2 py-0.5 rounded-full border ${badgeCls}">${row.score}/100</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                <div class="h-1.5 rounded-full transition-all duration-300" style="width:${row.score}%; background:${barColor}"></div>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-slate-500 mt-1.5">
+                <span>${row.per10k.toFixed(1)} ${t.per10kShort}</span>
+                <span>~€${row.estRevenue}k · ${row.population.toLocaleString(locale)} hab.</span>
+              </div>
+            </div>
+          </button>
+        `;
+      }).join("");
+    }
+
+    // =========================================================================
+    // 8. BOTTOM CHART (Chart.js: Saturation vs Opportunity Score)
+    // =========================================================================
+    function renderChart() {
+      const t = I18N[state.lang];
+      const rows = state.chartMode === "top10"
+        ? computedRows.slice(0, 10)
+        : [...computedRows].sort((a, b) => a.per10k - b.per10k);
+
+      const labels = rows.map(r =>
+        r.name
+          .replace(" (Capital)", "")
+          .replace(" de Madrid", "")
+          .replace(" de Henares", "")
+          .replace(" de Alarcón", "")
+          .replace(" de Ardoz", "")
+          .replace(" del Monte", "")
+      );
+      const satData = rows.map(r => +r.per10k.toFixed(2));
+      const scoreData = rows.map(r => r.score);
+      const barColors = rows.map(r => getScoreColor(r.score));
+
+      const ctx = document.getElementById("saturationChart").getContext("2d");
+
+      if (saturationChart) {
+        saturationChart.data.labels = labels;
+        saturationChart.data.datasets[0].label = t.chartSatAxis;
+        saturationChart.data.datasets[0].data = satData;
+        saturationChart.data.datasets[0].backgroundColor = barColors.map(c => c + "CC");
+        saturationChart.data.datasets[0].borderColor = barColors;
+        saturationChart.data.datasets[1].label = t.chartScoreAxis;
+        saturationChart.data.datasets[1].data = scoreData;
+        saturationChart.options.scales.y.title.text = t.chartSatAxis;
+        saturationChart.options.scales.y1.title.text = t.chartScoreAxis;
+        saturationChart.update();
+        return;
+      }
+
+      saturationChart = new Chart(ctx, {
+        data: {
+          labels,
+          datasets: [
+            {
+              type: "bar",
+              label: t.chartSatAxis,
+              data: satData,
+              backgroundColor: barColors.map(c => c + "CC"),
+              borderColor: barColors,
+              borderWidth: 1.5,
+              borderRadius: 6,
+              yAxisID: "y"
+            },
+            {
+              type: "line",
+              label: t.chartScoreAxis,
+              data: scoreData,
+              borderColor: "#0f172a",
+              backgroundColor: "#0f172a",
+              borderWidth: 2.5,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              tension: 0.25,
+              yAxisID: "y1"
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              position: "top",
+              labels: {
+                usePointStyle: true,
+                font: { family: "Plus Jakarta Sans", size: 11, weight: "600" }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { family: "Plus Jakarta Sans", size: 11, weight: "600" },
+                maxRotation: 35,
+                minRotation: 20
+              }
+            },
+            y: {
+              type: "linear",
+              position: "left",
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: t.chartSatAxis,
+                font: { family: "Plus Jakarta Sans", size: 11, weight: "700" }
+              },
+              grid: { color: "#f1f5f9" }
+            },
+            y1: {
+              type: "linear",
+              position: "right",
+              min: 0,
+              max: 100,
+              title: {
+                display: true,
+                text: t.chartScoreAxis,
+                font: { family: "Plus Jakarta Sans", size: 11, weight: "700" }
+              },
+              grid: { drawOnChartArea: false }
+            }
+          }
+        }
+      });
+    }
+
+    // =========================================================================
+    // 9. UI BINDINGS & LANGUAGE SWITCHER
+    // =========================================================================
+    function populateSectorDropdown() {
+      const select = document.getElementById("sectorSelect");
+      const current = state.sectorId;
+      select.innerHTML = SECTORS.map(s => {
+        const label = state.lang === "es" ? s.es : s.en;
+        return `<option value="${s.id}" ${s.id === current ? "selected" : ""}>${s.icon} ${label} (${s.cnae})</option>`;
+      }).join("");
+      updateCnaeBadge();
+    }
+
+    function updateCnaeBadge() {
+      const sectorObj = SECTORS.find(s => s.id === state.sectorId);
+      const t = I18N[state.lang];
+      document.getElementById("cnaeBadge").textContent = `${t.cnaePrefix}: ${sectorObj.cnae} · col_emp_ramas`;
+    }
+
+    function updateWeightPercentages() {
+      const total = state.weights.sat + state.weights.pop + state.weights.inc + state.weights.surv;
+      const pct = val => total ? Math.round((val / total) * 100) + "%" : "25%";
+      document.getElementById("wSatPct").textContent = pct(state.weights.sat);
+      document.getElementById("wPopPct").textContent = pct(state.weights.pop);
+      document.getElementById("wIncPct").textContent = pct(state.weights.inc);
+      document.getElementById("wSurvPct").textContent = pct(state.weights.surv);
+    }
+
+    function applyLanguage() {
+      const t = I18N[state.lang];
+      document.documentElement.lang = state.lang;
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        if (t[key]) el.textContent = t[key];
+      });
+
+      const esBtn = document.getElementById("langES");
+      const enBtn = document.getElementById("langEN");
+      if (state.lang === "es") {
+        esBtn.className = "px-2.5 py-1 text-xs font-bold rounded-md transition bg-rose-600 text-white";
+        enBtn.className = "px-2.5 py-1 text-xs font-bold rounded-md transition text-slate-300 hover:text-white";
+      } else {
+        enBtn.className = "px-2.5 py-1 text-xs font-bold rounded-md transition bg-rose-600 text-white";
+        esBtn.className = "px-2.5 py-1 text-xs font-bold rounded-md transition text-slate-300 hover:text-white";
+      }
+
+      populateSectorDropdown();
+      updateLegend();
+      renderMethodologyModalBody();
+      updateAll();
+    }
+
+    function updateAll() {
+      computeScores();
+      updateWeightPercentages();
+      refreshMap();
+      renderTop5AndKPIs();
+      renderChart();
+    }
+
+    // =========================================================================
+    // 10. BOOTSTRAP
+    // =========================================================================
+    document.addEventListener("DOMContentLoaded", () => {
+      populateSectorDropdown();
+      renderMethodologyModalBody();
+      computeScores();
+      initMap();
+      updateAll();
+
+      document.getElementById("sectorSelect").addEventListener("change", e => {
+        state.sectorId = e.target.value;
+        updateCnaeBadge();
+        updateAll();
+      });
+
+      const bindSlider = (id, key) => {
+        document.getElementById(id).addEventListener("input", e => {
+          state.weights[key] = Number(e.target.value);
+          updateAll();
+        });
+      };
+      bindSlider("wSat", "sat");
+      bindSlider("wPop", "pop");
+      bindSlider("wInc", "inc");
+      bindSlider("wSurv", "surv");
+
+      document.getElementById("resetWeightsBtn").addEventListener("click", () => {
+        state.weights = { sat: 35, pop: 25, inc: 25, surv: 15 };
+        document.getElementById("wSat").value = 35;
+        document.getElementById("wPop").value = 25;
+        document.getElementById("wInc").value = 25;
+        document.getElementById("wSurv").value = 15;
+        updateAll();
+      });
+
+      document.getElementById("resetMapBtn").addEventListener("click", () => {
+        state.selectedMuniId = null;
+        map.closePopup();
+        map.setView([40.36, -3.68], 10);
+        refreshMap();
+      });
+
+      document.getElementById("langES").addEventListener("click", () => {
+        if (state.lang !== "es") { state.lang = "es"; applyLanguage(); }
+      });
+      document.getElementById("langEN").addEventListener("click", () => {
+        if (state.lang !== "en") { state.lang = "en"; applyLanguage(); }
+      });
+
+      const topBtn = document.getElementById("chartModeTop");
+      const allBtn = document.getElementById("chartModeAll");
+      topBtn.addEventListener("click", () => {
+        state.chartMode = "top10";
+        topBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm transition";
+        allBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg text-slate-600 hover:text-slate-900 transition";
+        renderChart();
+      });
+      allBtn.addEventListener("click", () => {
+        state.chartMode = "all20";
+        allBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm transition";
+        topBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg text-slate-600 hover:text-slate-900 transition";
+        renderChart();
+      });
+
+      const modal = document.getElementById("methodologyModal");
+      document.getElementById("methodologyBtn").addEventListener("click", () => modal.classList.remove("hidden"));
+      document.getElementById("closeModalBtn").addEventListener("click", () => modal.classList.add("hidden"));
+      document.getElementById("closeModalBtn2").addEventListener("click", () => modal.classList.add("hidden"));
+      modal.addEventListener("click", e => {
+        if (e.target === modal) modal.classList.add("hidden");
+      });
+    });
+  </script>
+</body>
+</html>
